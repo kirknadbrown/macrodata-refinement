@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Macrodata Refinement</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000000;
+            font-family: 'Courier New', monospace;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let numbers = [];
+        let selectedNumbers = [];
+        let bins = [];
+        let floatingNumbers = [];
+        let scrollOffsetY = 0;
+        let scrollOffsetX = 0;
+        let numColumns = 30;
+        let numRows = 100;
+        let cellWidth, cellHeight;
+        let binHeight = 120;
+        let headerHeight = 60;
+        let fileComplete = false;
+        let fadeOpacity = 0;
+        let congratsFloatOffset = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragEndX = 0;
+        let dragEndY = 0;
+        
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            cellWidth = 50;
+            cellHeight = 35;
+            
+            // Initialize 5 bins at the bottom
+            for (let i = 0; i < 5; i++) {
+                bins.push({
+                    x: i * (width / 5),
+                    y: height - binHeight,
+                    width: width / 5,
+                    height: binHeight,
+                    numbers: [],
+                    color: color(40, 40, 40),
+                    flapOpen: 0,
+                    targetFlapOpen: 0,
+                    completion: 0,
+                    categories: {
+                        WO: 0,
+                        FC: 0,
+                        DR: 0,
+                        MA: 0
+                    },
+                    frameHeight: 0,
+                    targetFrameHeight: 0
+                });
+            }
+            
+            // Generate initial sea of numbers
+            generateNumbers();
+        }
+        
+        function generateNumbers() {
+            for (let i = 0; i < numRows * 3; i++) {
+                let row = [];
+                for (let j = 0; j < numColumns; j++) {
+                    row.push({
+                        value: floor(random(0, 10)),
+                        selected: false,
+                        id: numbers.length * numColumns + j,
+                        floatOffset: random(0, TWO_PI),
+                        floatSpeed: random(0.005, 0.015)
+                    });
+                }
+                numbers.push(row);
+            }
+        }
+        
+        function draw() {
+            background(0);
+            
+            // Check if file is complete
+            if (fileComplete) {
+                // Fade in effect
+                fadeOpacity = min(255, fadeOpacity + (255 / 24)); // 400ms at 60fps = ~24 frames
+                
+                // Update floating animation
+                congratsFloatOffset += 0.02;
+                
+                fill(255, fadeOpacity);
+                textAlign(CENTER, CENTER);
+                
+                // Draw CONGRATULATIONS with each letter floating independently
+                textSize(48);
+                let congratsText = 'CONGRATULATIONS';
+                let congratsY = height / 2 - 30;
+                let startX = width / 2 - (textWidth(congratsText) / 2);
+                let xOffset = 0;
+                
+                for (let i = 0; i < congratsText.length; i++) {
+                    let letter = congratsText[i];
+                    let letterFloat = sin(congratsFloatOffset + i * 0.3) * 3;
+                    text(letter, startX + xOffset + textWidth(letter) / 2, congratsY + letterFloat);
+                    xOffset += textWidth(letter);
+                }
+                
+                // Draw subtitle with each letter floating independently
+                textSize(20);
+                let subtitleText = 'The work is mysterious and important';
+                let subtitleY = height / 2 + 30;
+                startX = width / 2 - (textWidth(subtitleText) / 2);
+                xOffset = 0;
+                
+                for (let i = 0; i < subtitleText.length; i++) {
+                    let letter = subtitleText[i];
+                    let letterFloat = sin(congratsFloatOffset + i * 0.25 + PI) * 2;
+                    text(letter, startX + xOffset + textWidth(letter) / 2, subtitleY + letterFloat);
+                    xOffset += textWidth(letter);
+                }
+                
+                return;
+            }
+            
+            // Draw header
+            fill(20);
+            noStroke();
+            rect(0, 0, width, headerHeight);
+            
+            // Calculate overall completion across all bins
+            let totalCompletion = 0;
+            bins.forEach(bin => {
+                totalCompletion += bin.completion;
+            });
+            let overallCompletion = totalCompletion / 5;
+            
+            // Check if work is complete
+            if (overallCompletion >= 100 && !fileComplete) {
+                fileComplete = true;
+            }
+            
+            // Draw "Sienna" title
+            fill(255);
+            textAlign(LEFT, CENTER);
+            textSize(24);
+            text('SIENNA', 20, headerHeight / 2);
+            
+            // Draw overall progress bar to the right of SIENNA
+            let progressBarWidth = width - 200;
+            let progressBarHeight = 15;
+            let progressBarX = 140;
+            let progressBarY = headerHeight / 2 - progressBarHeight / 2;
+            
+            // Bar background
+            fill(20);
+            stroke(255);
+            strokeWeight(2);
+            rect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
+            
+            // Bar fill
+            noStroke();
+            fill(150);
+            rect(progressBarX, progressBarY, progressBarWidth * (overallCompletion / 100), progressBarHeight);
+            
+            // Percentage text
+            fill(255);
+            textSize(12);
+            textAlign(RIGHT, CENTER);
+            text(floor(overallCompletion) + '%', width - 25, headerHeight / 2);
+            
+            // Draw number grid
+            push();
+            translate(0, headerHeight);
+            
+            let startRow = floor(scrollOffsetY / cellHeight);
+            let endRow = startRow + ceil((height - binHeight - headerHeight) / cellHeight) + 1;
+            let startCol = floor(scrollOffsetX / cellWidth);
+            let endCol = startCol + ceil(width / cellWidth) + 1;
+            
+            for (let i = max(0, startRow); i < min(numbers.length, endRow); i++) {
+                for (let j = max(0, startCol); j < min(numColumns, endCol); j++) {
+                    let num = numbers[i][j];
+                    let x = j * cellWidth - scrollOffsetX;
+                    let y = i * cellHeight - scrollOffsetY;
+                    
+                    // Update floating animation only if not selected
+                    let floatY = 0;
+                    let shakeX = 0;
+                    if (!num.selected) {
+                        num.floatOffset += num.floatSpeed;
+                        floatY = sin(num.floatOffset) * 2;
+                    }
+                    
+                    // Check if mouse is over this cell
+                    let mouseOverCell = mouseX > x && mouseX < x + cellWidth &&
+                                       mouseY > y + headerHeight && mouseY < y + cellHeight + headerHeight;
+                    
+                    // Calculate distance from mouse for magnification effect and shake
+                    let centerX = x + cellWidth / 2;
+                    let centerY = y + cellHeight / 2 + headerHeight;
+                    let distance = dist(mouseX, mouseY, centerX, centerY);
+                    let maxDist = 120;
+                    let sizeFactor = 1;
+                    
+                    if (distance < maxDist && mouseY > headerHeight && mouseY < height - binHeight) {
+                        sizeFactor = map(distance, 0, maxDist, 1.8, 1);
+                        // Add subtle shake effect when mouse is near
+                        let shakeIntensity = map(distance, 0, maxDist, 0.8, 0);
+                        shakeX = sin(frameCount * 0.2 + num.id * 0.15) * shakeIntensity;
+                    }
+                    
+                    // Make selected numbers larger
+                    if (num.selected) {
+                        sizeFactor *= 1.4;
+                    }
+                    
+                    // Draw number (no cell background)
+                    noStroke();
+                    fill(255);
+                    textAlign(CENTER, CENTER);
+                    textSize(16 * sizeFactor);
+                    text(num.value, x + cellWidth / 2 + shakeX, y + cellHeight / 2 + floatY);
+                }
+            }
+            pop();
+            
+            // Draw floating numbers animation
+            for (let i = floatingNumbers.length - 1; i >= 0; i--) {
+                let fn = floatingNumbers[i];
+                
+                // Update position
+                fn.x = lerp(fn.x, fn.targetX, 0.08);
+                fn.y = lerp(fn.y, fn.targetY, 0.08);
+                fn.alpha = lerp(fn.alpha, 0, 0.05);
+                
+                // Draw floating number
+                fill(255, fn.alpha);
+                textAlign(CENTER, CENTER);
+                textSize(20);
+                text(fn.value, fn.x, fn.y);
+                
+                // Remove if reached destination
+                if (dist(fn.x, fn.y, fn.targetX, fn.targetY) < 5 || fn.alpha < 10) {
+                    floatingNumbers.splice(i, 1);
+                }
+            }
+            
+            // Draw selection info
+            if (selectedNumbers.length > 0) {
+                fill(30, 220);
+                rect(width - 200, headerHeight + 10, 190, 80);
+                fill(255);
+                textAlign(LEFT, TOP);
+                textSize(14);
+                text('Selected: ' + selectedNumbers.length, width - 190, headerHeight + 20);
+                text('Click bin to deposit', width - 190, headerHeight + 45);
+                
+                // Show selected numbers
+                let numString = selectedNumbers.map(n => n.value).join(', ');
+                if (numString.length > 20) {
+                    numString = numString.substring(0, 20) + '...';
+                }
+                textSize(12);
+                text(numString, width - 190, headerHeight + 65);
+            }
+            
+            // Draw bins
+            for (let i = 0; i < bins.length; i++) {
+                let bin = bins[i];
+                
+                // Update flap animation
+                bin.flapOpen = lerp(bin.flapOpen, bin.targetFlapOpen, 0.15);
+                
+                // Update frame height animation
+                bin.frameHeight = lerp(bin.frameHeight, bin.targetFrameHeight, 0.1);
+                
+                // Draw category frame FIRST (behind bin) if it has risen
+                if (bin.frameHeight > 5) {
+                    let frameY = bin.y - bin.frameHeight;
+                    let maxFrameHeight = 140;
+                    
+                    // Frame background
+                    fill(30);
+                    stroke(255);
+                    strokeWeight(2);
+                    rect(bin.x, frameY, bin.width, bin.frameHeight);
+                    
+                    // Draw categories
+                    let categories = ['WO', 'FC', 'DR', 'MA'];
+                    let categoryY = frameY + 25;
+                    let categorySpacing = 30;
+                    
+                    noStroke();
+                    
+                    for (let c = 0; c < categories.length; c++) {
+                        let cat = categories[c];
+                        let y = categoryY + c * categorySpacing;
+                        
+                        // Category label
+                        fill(255);
+                        textAlign(LEFT, CENTER);
+                        textSize(14);
+                        text(cat, bin.x + 10, y);
+                        
+                        // Category bar
+                        let catBarX = bin.x + 40;
+                        let catBarWidth = bin.width - 70;
+                        let catBarHeight = 10;
+                        
+                        // Bar background
+                        fill(20);
+                        stroke(255);
+                        strokeWeight(1);
+                        rect(catBarX, y - catBarHeight / 2, catBarWidth, catBarHeight);
+                        
+                        // Bar fill
+                        noStroke();
+                        fill(150);
+                        rect(catBarX, y - catBarHeight / 2, catBarWidth * (bin.categories[cat] / 100), catBarHeight);
+                        
+                        // Percentage
+                        fill(255);
+                        textSize(10);
+                        textAlign(RIGHT, CENTER);
+                        text(bin.categories[cat] + '%', bin.x + bin.width - 10, y);
+                    }
+                }
+                
+                // Check if mouse is over bin
+                let mouseOverBin = mouseX > bin.x && mouseX < bin.x + bin.width &&
+                                  mouseY > bin.y && mouseY < bin.y + bin.height;
+                
+                if (mouseOverBin && selectedNumbers.length > 0) {
+                    fill(80);
+                } else {
+                    fill(bin.color);
+                }
+                
+                stroke(255);
+                strokeWeight(2);
+                
+                // Draw bin box
+                rect(bin.x, bin.y, bin.width, bin.height);
+                
+                // Draw flaps opening upward from the edges
+                let flapHeight = 20;
+                let flapAngle = bin.flapOpen * 70;
+                
+                push();
+                // Left flap - hinged at left edge, opens upward to the left
+                translate(bin.x, bin.y);
+                rotate(radians(-flapAngle));
+                fill(60);
+                stroke(255);
+                strokeWeight(2);
+                rect(0, 0, bin.width / 2, flapHeight);
+                pop();
+                
+                push();
+                // Right flap - hinged at right edge, opens upward to the right
+                translate(bin.x + bin.width, bin.y);
+                rotate(radians(flapAngle));
+                fill(60);
+                stroke(255);
+                strokeWeight(2);
+                rect(-bin.width / 2, 0, bin.width / 2, flapHeight);
+                pop();
+                
+                // Draw bin label
+                noStroke();
+                fill(255);
+                textAlign(CENTER, TOP);
+                textSize(18);
+                text('0' + (i + 1), bin.x + bin.width / 2, bin.y + 25);
+                
+                // Draw overall completion bar
+                let barWidth = bin.width - 40;
+                let barHeight = 12;
+                let barX = bin.x + 20;
+                let barY = bin.y + 50;
+                
+                // Bar background
+                fill(20);
+                stroke(255);
+                strokeWeight(1);
+                rect(barX, barY, barWidth, barHeight);
+                
+                // Bar fill
+                noStroke();
+                fill(150);
+                rect(barX, barY, barWidth * (bin.completion / 100), barHeight);
+                
+                // Percentage text
+                fill(255);
+                textSize(11);
+                textAlign(CENTER, TOP);
+                text(bin.completion + '%', bin.x + bin.width / 2, bin.y + 67);
+            }
+            
+            // Draw selection box if dragging
+            if (isDragging) {
+                noFill();
+                stroke(255, 150);
+                strokeWeight(2);
+                rect(min(dragStartX, dragEndX), min(dragStartY, dragEndY), 
+                     abs(dragEndX - dragStartX), abs(dragEndY - dragStartY));
+            }
+            
+            // Generate more numbers if scrolling down
+            if (scrollOffsetY > (numbers.length - 30) * cellHeight) {
+                generateNumbers();
+            }
+        }
+        
+        function mousePressed() {
+            // Check if clicking in the number grid area
+            let gridY = mouseY - headerHeight;
+            if (gridY > 0 && gridY < height - binHeight) {
+                // Start drag selection
+                isDragging = true;
+                dragStartX = mouseX;
+                dragStartY = mouseY;
+                dragEndX = mouseX;
+                dragEndY = mouseY;
+                return;
+            }
+            
+            // Check if clicking on a bin
+            for (let i = 0; i < bins.length; i++) {
+                let bin = bins[i];
+                if (mouseX > bin.x && mouseX < bin.x + bin.width &&
+                    mouseY > bin.y && mouseY < bin.y + bin.height) {
+                    
+                    if (selectedNumbers.length >= 1 && selectedNumbers.length <= 10) {
+                        // Open the bin flaps
+                        bin.targetFlapOpen = 1;
+                        
+                        // Randomly assign numbers to categories and update percentages
+                        // Each number adds 30% to its category (3x faster)
+                        selectedNumbers.forEach(n => {
+                            let categories = ['WO', 'FC', 'DR', 'MA'];
+                            let randomCat = categories[floor(random(categories.length))];
+                            bin.categories[randomCat] = min(100, bin.categories[randomCat] + 30);
+                        });
+                        
+                        // Calculate bin completion as average of all 4 categories (each category = 25% of total)
+                        bin.completion = (bin.categories.WO + bin.categories.FC + bin.categories.DR + bin.categories.MA) / 4;
+                        
+                        // Create floating animations for each selected number
+                        selectedNumbers.forEach(n => {
+                            // Find the number's position in the grid
+                            let foundRow = -1;
+                            let foundCol = -1;
+                            for (let r = 0; r < numbers.length; r++) {
+                                for (let c = 0; c < numColumns; c++) {
+                                    if (numbers[r][c].id === n.id) {
+                                        foundRow = r;
+                                        foundCol = c;
+                                        break;
+                                    }
+                                }
+                                if (foundRow !== -1) break;
+                            }
+                            
+                            if (foundRow !== -1) {
+                                let startX = foundCol * cellWidth + cellWidth / 2 - scrollOffsetX;
+                                let startY = foundRow * cellHeight - scrollOffsetY + cellHeight / 2 + headerHeight;
+                                let targetX = bin.x + bin.width / 2;
+                                let targetY = bin.y + bin.height / 2;
+                                
+                                floatingNumbers.push({
+                                    value: n.value,
+                                    x: startX,
+                                    y: startY,
+                                    targetX: targetX,
+                                    targetY: targetY,
+                                    alpha: 255,
+                                    binIndex: i
+                                });
+                            }
+                        });
+                        
+                        // Add to bin
+                        bin.numbers.push(selectedNumbers.map(n => n.value));
+                        
+                        // Clear selection
+                        selectedNumbers.forEach(n => n.selected = false);
+                        selectedNumbers = [];
+                        
+                        // Close flaps, then show frame, then hide frame
+                        setTimeout(() => {
+                            bin.targetFlapOpen = 0;
+                            
+                            // After flaps close, raise frame
+                            setTimeout(() => {
+                                bin.targetFrameHeight = 140;
+                                
+                                // After 2 seconds, lower frame
+                                setTimeout(() => {
+                                    bin.targetFrameHeight = 0;
+                                }, 2000);
+                            }, 300);
+                        }, 800);
+                    }
+                }
+            }
+        }
+        
+        function mouseDragged() {
+            if (isDragging) {
+                dragEndX = mouseX;
+                dragEndY = mouseY;
+            }
+        }
+        
+        function mouseReleased() {
+            if (isDragging) {
+                // Select all numbers within the drag box
+                let minX = min(dragStartX, dragEndX);
+                let maxX = max(dragStartX, dragEndX);
+                let minY = min(dragStartY, dragEndY);
+                let maxY = max(dragStartY, dragEndY);
+                
+                // Clear previous selection if it was a small click
+                if (abs(dragEndX - dragStartX) < 5 && abs(dragEndY - dragStartY) < 5) {
+                    // This was a click, not a drag - toggle single number
+                    let gridY = mouseY - headerHeight;
+                    if (gridY > 0 && gridY < height - binHeight) {
+                        let row = floor((gridY + scrollOffsetY) / cellHeight);
+                        let col = floor((mouseX + scrollOffsetX) / cellWidth);
+                        
+                        if (row >= 0 && row < numbers.length && col >= 0 && col < numColumns) {
+                            let num = numbers[row][col];
+                            
+                            if (num.selected) {
+                                num.selected = false;
+                                selectedNumbers = selectedNumbers.filter(n => n.id !== num.id);
+                            } else {
+                                if (selectedNumbers.length < 10) {
+                                    num.selected = true;
+                                    selectedNumbers.push(num);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // This was a drag - select all in box
+                    for (let i = 0; i < numbers.length; i++) {
+                        for (let j = 0; j < numColumns; j++) {
+                            let num = numbers[i][j];
+                            let x = j * cellWidth - scrollOffsetX;
+                            let y = i * cellHeight - scrollOffsetY + headerHeight;
+                            
+                            // Check if number center is within selection box
+                            let centerX = x + cellWidth / 2;
+                            let centerY = y + cellHeight / 2;
+                            
+                            if (centerX > minX && centerX < maxX && centerY > minY && centerY < maxY) {
+                                if (!num.selected && selectedNumbers.length < 10) {
+                                    num.selected = true;
+                                    selectedNumbers.push(num);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                isDragging = false;
+            }
+        }
+        
+        function mouseWheel(event) {
+            if (keyIsDown(SHIFT)) {
+                // Horizontal scroll when holding shift
+                scrollOffsetX += event.delta * 0.5;
+                scrollOffsetX = max(0, scrollOffsetX);
+            } else {
+                // Vertical scroll
+                scrollOffsetY += event.delta * 0.5;
+                scrollOffsetY = max(0, scrollOffsetY);
+            }
+            return false;
+        }
+        
+        function keyPressed() {
+            // Clear selection with ESC
+            if (keyCode === ESCAPE) {
+                selectedNumbers.forEach(n => n.selected = false);
+                selectedNumbers = [];
+            }
+            
+            // Clear all bins with 'C'
+            if (key === 'c' || key === 'C') {
+                bins.forEach(bin => bin.numbers = []);
+            }
+        }
+        
+        function touchStarted() {
+            // Treat touch as click
+            mousePressed();
+            return false;
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            cellWidth = 50;
+            cellHeight = 35;
+            
+            // Reposition bins
+            for (let i = 0; i < bins.length; i++) {
+                bins[i].x = i * (width / 5);
+                bins[i].y = height - binHeight;
+                bins[i].width = width / 5;
+            }
+        }
+    </script>
+</body>
+</html>

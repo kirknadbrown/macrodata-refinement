@@ -1,0 +1,17 @@
+{
+  "name": "macrodata-refinement",
+  "version": "1.0.0",
+  "description": "Macrodata Refinement - An interactive p5.js visualization",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "keywords": [
+    "p5.js",
+    "interactive",
+    "visualization"
+  ],
+  "author": "",
+  "license": "MIT"
+}
